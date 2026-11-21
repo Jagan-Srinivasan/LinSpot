@@ -179,4 +179,4 @@ Every command and its output is logged with `--debug` (GUI: "Detailed debug log"
 
 ## 📄 License
 
-MIT
+Not Published Yet......
