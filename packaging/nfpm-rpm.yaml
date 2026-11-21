@@ -1,0 +1,54 @@
+name: linspot
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: 1
+maintainer: LinSpot contributors
+vendor: LinSpot
+description: One-click Wi-Fi hotspot GUI with desktop widgets
+license: MIT
+homepage: https://github.com/Jagan-Srinivasan/LinSpot
+
+# Fedora/RPM package dependencies
+depends:
+  - iw
+  - hostapd
+  - dnsmasq
+  - iproute
+  - nftables
+  - polkit
+  - wireless-regdb
+  - NetworkManager
+  - mesa-libGL
+  - libxkbcommon
+  - libwayland-client
+  - libX11
+  - libXcursor
+  - libXrandr
+  - libXi
+
+contents:
+  - src: target/release/linspot
+    dst: /usr/bin/linspot
+    file_info:
+      mode: 0755
+  - src: pkg/org.linspot.policy
+    dst: /usr/share/polkit-1/actions/org.linspot.policy
+    file_info:
+      mode: 0644
+  - src: pkg/linspot.desktop
+    dst: /usr/share/applications/linspot.desktop
+    file_info:
+      mode: 0644
+  - src: data/linspot.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/linspot.svg
+    file_info:
+      mode: 0644
+  - src: pkg/install.info
+    dst: /etc/linspot/install.info
+    file_info:
+      mode: 0644
+  - src: pkg/90-linspot-unmanaged.conf
+    dst: /etc/NetworkManager/conf.d/90-linspot-unmanaged.conf
+    file_info:
+      mode: 0644
