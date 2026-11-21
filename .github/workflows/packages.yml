@@ -27,7 +27,9 @@ jobs:
             libxcursor-dev \
             libxrandr-dev \
             libxi-dev \
-            libxcb-dev \
+            libxcb1-dev \
+            libasound2-dev \
+            libudev-dev \
             libgl1-mesa-dev \
             golang-go
 
@@ -52,7 +54,7 @@ jobs:
 
   rpm:
     runs-on: ubuntu-latest
-    container: fedora:42
+    container: fedora:44
 
     steps:
       - name: Install build dependencies
@@ -68,6 +70,8 @@ jobs:
             libXrandr-devel \
             libXi-devel \
             libxcb-devel \
+            alsa-lib-devel \
+            systemd-devel \
             mesa-libGL-devel \
             golang
 
