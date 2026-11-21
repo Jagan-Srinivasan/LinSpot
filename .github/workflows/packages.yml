@@ -30,10 +30,13 @@ jobs:
             libxcb1-dev \
             libasound2-dev \
             libudev-dev \
-            libgl1-mesa-dev \
-            golang-go
+            libgl1-mesa-dev
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
       - name: Install NFPM
         run: |
@@ -72,12 +75,15 @@ jobs:
             libxcb-devel \
             alsa-lib-devel \
             systemd-devel \
-            mesa-libGL-devel \
-            golang
+            mesa-libGL-devel
 
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
       - name: Install NFPM
         run: |
