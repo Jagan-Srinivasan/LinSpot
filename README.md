@@ -178,4 +178,6 @@ Every command and its output is logged with `--debug` (GUI: "Detailed debug log"
 
 ## 📄 License
 
-Not Published Yet......
+LinSpot is licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Jagan S.
