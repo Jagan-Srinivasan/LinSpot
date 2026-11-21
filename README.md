@@ -4,10 +4,10 @@
 
 **One-click Wi-Fi hotspot for any Linux distro — with a modern GUI and built-in desktop widgets.**
 
-![Rust](https://img.shields.io/badge/built%20with-Rust-orange?logo=rust)
-![GUI](https://img.shields.io/badge/GUI-egui-38bdf8)
-![Distros](https://img.shields.io/badge/distros-Arch%20%7C%20Manjaro%20%7C%20EndeavourOS%20%7C%20Debian%20%7C%20Ubuntu%20%7C%20Linux%20Mint)
-![Widgets](https://img.shields.io/badge/widgets-KDE%20Plasma%20%7C%20GNOME%20%7C%20DankMaterialShell-a78bfa)
+![Rust](https://img.shields.io/badge/Built%20with-Rust-orange?logo=rust&logoColor=white)
+![GUI](https://img.shields.io/badge/GUI-egui-38bdf8?logoColor=white)
+![Distros](https://img.shields.io/badge/Distros-Arch%20%7C%20Manjaro%20%7C%20EndeavourOS%20%7C%20Debian%20%7C%20Ubuntu%20%7C%20Linux%20Mint-green?logoColor=white)
+![Widgets](https://img.shields.io/badge/Widgets-KDE%20Plasma%20%7C%20GNOME%20%7C%20DankMaterialShell-a78bfa?logoColor=white)
 
 [Features](#-why-linspot) · [Screenshots](#-screenshots) · [Widgets](#-desktop-widgets) · [Install](#-install) · [Usage](#-usage) · [Docs](#-documentation)
 
