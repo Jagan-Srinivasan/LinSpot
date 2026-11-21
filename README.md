@@ -176,8 +176,10 @@ Every command and its output is logged with `--debug` (GUI: "Detailed debug log"
 - Plasma widget needs **Plasma 6**; GNOME extension needs **GNOME 45+**.
 - DankMaterialShell itself is installed with its official installer: `curl -fsSL https://install.danklinux.com | sh`.
 
-## 📄 License
+## License
 
-LinSpot is licensed under the [MIT License](LICENSE).
+LinSpot is licensed under the GNU General Public License v3.0.
 
-Copyright (c) 2026 Jagan S.
+Copyright (C) 2026 Jagan S.
+
+See [LICENSE](LICENSE) for the full license text.
