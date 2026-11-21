@@ -40,6 +40,8 @@ Standalone: **no `create_ap`, no `linux-wifi-hotspot`** — just one Rust binary
 ## 🖼️ Screenshots
 
 ### The app
+<img width="1919" height="1078" alt="screenshot_2026-11-21_10-25-26" src="https://github.com/user-attachments/assets/74db2ab0-49ab-4ff7-a1e5-1d8125524f21" />
+
 
 <table>
   <tr>
