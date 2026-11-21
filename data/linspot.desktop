@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=LinSpot
+GenericName=Wi-Fi Hotspot
+Comment=One-click Wi-Fi hotspot for any Linux distro
+Exec=@BINDIR@/linspot gui
+Icon=linspot
+Terminal=false
+Categories=Network;Utility;
+Keywords=wifi;hotspot;access point;share;

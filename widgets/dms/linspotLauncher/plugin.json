@@ -1,0 +1,13 @@
+{
+  "id": "linspotLauncher",
+  "name": "LinSpot Launcher",
+  "description": "Start, stop and check the LinSpot Wi-Fi hotspot from the launcher (type 'hs')",
+  "version": "1.0.1",
+  "author": "linspot",
+  "type": "launcher",
+  "capabilities": ["launcher"],
+  "component": "./LinspotLauncher.qml",
+  "trigger": "hs",
+  "icon": "wifi_tethering",
+  "permissions": ["settings_read", "settings_write"]
+}

@@ -1,0 +1,14 @@
+{
+    "KPlugin": {
+        "Id": "org.linspot.hotspot",
+        "Name": "LinSpot Hotspot",
+        "Description": "Start, stop and monitor your LinSpot Wi-Fi hotspot",
+        "Icon": "network-wireless-hotspot",
+        "Authors": [{ "Name": "LinSpot" }],
+        "Category": "System Information",
+        "License": "MIT",
+        "Version": "1.0.0"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

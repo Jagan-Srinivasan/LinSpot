@@ -1,0 +1,7 @@
+{
+    "uuid": "linspot@linspot.org",
+    "name": "LinSpot Hotspot",
+    "description": "Quick Settings toggle to start, stop and monitor the LinSpot Wi-Fi hotspot. Set the SSID and password once in the LinSpot app.",
+    "shell-version": ["45", "46", "47", "48", "49", "50"],
+    "version": 1
+}
