@@ -1,0 +1,48 @@
+
+name: Build LinSpot packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  deb:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev curl
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.41.0/nfpm_2.41.0_amd64.deb -o nfpm.deb && sudo dpkg -i nfpm.deb
+
+      - run: chmod +x packaging/build-packages.sh && ./packaging/build-packages.sh deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linspot-deb
+          path: dist/*.deb
+
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:42
+    steps:
+      - run: dnf install -y git gcc pkg-config libxkbcommon-devel wayland-devel libX11-devel libXcursor-devel libXrandr-devel libXi-devel mesa-libGL-devel curl tar
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.41.0/nfpm_2.41.0_x86_64.rpm -o nfpm.rpm && rpm -i nfpm.rpm
+
+      - run: chmod +x packaging/build-packages.sh && ./packaging/build-packages.sh rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linspot-rpm
+          path: dist/*.rpm
