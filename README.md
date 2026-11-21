@@ -6,9 +6,8 @@
 
 ![Rust](https://img.shields.io/badge/built%20with-Rust-orange?logo=rust)
 ![GUI](https://img.shields.io/badge/GUI-egui-38bdf8)
-![Distros](https://img.shields.io/badge/distros-Arch%20%7C%20Debian%20%7C%20Fedora%20%7C%20openSUSE%20%7C%20Alpine%20%7C%20Void-34d399)
+![Distros](https://img.shields.io/badge/distros-Arch%20%7C%20Debian%20%7C%20Fedora%20%7C%20openSUSE%20%7C%20)
 ![Widgets](https://img.shields.io/badge/widgets-KDE%20Plasma%20%7C%20GNOME%20%7C%20DankMaterialShell-a78bfa)
-![License](https://img.shields.io/badge/license-MIT-blue)
 
 [Features](#-why-linspot) · [Screenshots](#-screenshots) · [Widgets](#-desktop-widgets) · [Install](#-install) · [Usage](#-usage) · [Docs](#-documentation)
 
