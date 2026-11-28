@@ -13,6 +13,14 @@ One-click Wi-Fi hotspot for Linux — now with QR connect codes and device manag
   cards.
 - Pure-Rust QR encoder built in — no new runtime dependencies.
 
+### Widget fixes
+- The DankMaterialShell QR code now sizes its panel correctly (no more cut-off code) and
+  the popout grows to fit it.
+- Disconnecting a device removes it from every connected-devices list immediately (its
+  DHCP lease is dropped; it reappears only if it actually rejoins).
+- Turning the hotspot off and disconnecting devices is **passwordless** in the widgets
+  and the app (a sudoers rule installed with LinSpot; starting still asks).
+
 ### Install
 
 | Distro | File | Command |

@@ -74,16 +74,23 @@ PlasmoidItem {
 
     function parseStatus(out) {
         const parts = out.split("\n---\n")
+        let list = []
+        let runningNow = false
         try {
             const s = JSON.parse(parts[0])
-            running = !!s.running
+            runningNow = !!s.running
             ssid = s.ssid || ""
             channel = s.channel || 0
+            if (Array.isArray(s.client_list)) {
+                // already filtered by the backend (kicked devices are hidden)
+                list = s.client_list.map(c => ({ mac: c.mac, ip: c.ip, host: c.host }))
+            }
         } catch (e) {
-            running = false
+            runningNow = false
         }
-        const list = []
-        if (running && parts.length > 1) {
+        running = runningNow
+        // fallback for older LinSpot binaries: read the leases file
+        if (running && list.length === 0 && parts.length > 1) {
             const now = Math.floor(Date.now() / 1000)
             for (const line of parts[1].split("\n")) {
                 const p = line.trim().split(/\s+/)
@@ -104,7 +111,9 @@ PlasmoidItem {
         if (busy) return
         lastError = ""
         busy = true
-        run(running ? "off" : "on", "'" + bin + "' " + (running ? "off" : "on"))
+        // passwordless first (a sudoers rule covers off/on where installed), polkit prompt otherwise
+        const act = running ? "off" : "on"
+        run(act, "sudo -n '" + bin + "' " + act + " 2>/dev/null || '" + bin + "' " + act)
     }
 
     function openApp() {

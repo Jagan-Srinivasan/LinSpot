@@ -27,6 +27,10 @@ depends:
   - libxrandr
   - libxi
 
+scripts:
+  postinstall: pkg/postinstall.sh
+  preremove: pkg/prerm.sh
+
 contents:
   - src: target/release/linspot
     dst: /usr/bin/linspot

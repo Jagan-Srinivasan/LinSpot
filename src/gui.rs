@@ -499,6 +499,15 @@ impl App {
             };
             let mut cmd = if !elevate || backend::is_root() {
                 Command::new(&exe)
+            } else if matches!(job, Job::Stop | Job::Kick) && backend::find("sudo").map(|s| {
+                // passwordless sudo (a sudoers.d rule shipped by LinSpot) makes these silent
+                let mut t = Command::new(&s);
+                t.arg("-n").arg("-l").arg(&exe).args(&args);
+                t.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().map(|st| st.success()).unwrap_or(false)
+            }).unwrap_or(false) {
+                let mut c = Command::new("sudo");
+                c.arg("-n").arg(&exe);
+                c
             } else if let Some(pk) = backend::find("pkexec") {
                 let mut c = Command::new(pk);
                 c.arg(&exe);

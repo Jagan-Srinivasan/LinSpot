@@ -83,6 +83,7 @@ PluginComponent {
             onStreamFinished: {
                 root.detectedBin = text.trim()
                 root.refresh()
+                root.nopassProc.running = true
             }
         }
     }
@@ -99,6 +100,11 @@ PluginComponent {
     property bool qrVisible: false
     property string qrFile: ""
     property string qrSource: ""
+    // measured height of the shared management panel: the control-center detail page and the
+    // bar popout both size their window from it, so the QR always fits instead of overflowing
+    property real panelHeight: 0
+    property real panelBaseHeight: 0
+    readonly property real panelExtra: Math.max(0, panelHeight - panelBaseHeight)
 
     property string cfgSsid: "LinSpot"
     property string cfgPassword: ""
@@ -143,6 +149,12 @@ PluginComponent {
                     root.ssid = s.ssid || ""
                     root.channel = s.channel || 0
                     root.clientCount = s.clients || 0
+                    if (Array.isArray(s.client_list)) {
+                        // already filtered by the backend (kicked devices are hidden)
+                        root.clients = s.client_list.map(c => ({ mac: c.mac, ip: c.ip, host: c.host }))
+                        root.clientCount = root.clients.length
+                        return
+                    }
                 } catch (e) {
                     root.running = false
                 }
@@ -197,6 +209,7 @@ PluginComponent {
     property string authError: ""
     property string authPw: ""
     property bool useSudo: false          // mode of the command currently running
+    property bool useNopass: false        // current attempt runs through passwordless sudo
     property bool useFp: false            // current attempt is a fingerprint attempt
     property bool aborting: false
     property bool fpAvailable: false      // fprintd has enrolled fingers AND pam_fprintd is configured
@@ -232,7 +245,7 @@ PluginComponent {
         authPw = ""
         authError = ""
         useFp = true
-        runAction(authAction, true)
+        runAction(authAction, true, false)
         busyText = "Touch the fingerprint sensor…"
     }
 
@@ -252,6 +265,7 @@ PluginComponent {
         busyText = ""
         authPw = ""
         useFp = false
+        useNopass = false
         return true
     }
 
@@ -261,6 +275,7 @@ PluginComponent {
         authError = ""
         authPw = ""
         useFp = false
+        useNopass = false
     }
 
     function submitPassword(pw) {
@@ -268,7 +283,7 @@ PluginComponent {
         authPw = pw
         authError = ""
         useFp = false
-        runAction(authAction, true)
+        runAction(authAction, true, false)
     }
 
     // sudo wrong-password detection
@@ -292,8 +307,10 @@ PluginComponent {
         }
         if (isAuthFailure(errText)) {
             authPw = ""
-            authError = useFp ? "Fingerprint not recognised, enter your password" : "Wrong password, try again"
+            authError = useNopass ? "Password required"
+                : useFp ? "Fingerprint not recognised, enter your password" : "Wrong password, try again"
             useFp = false
+            useNopass = false
             needAuth = true
             return true
         }
@@ -316,8 +333,9 @@ PluginComponent {
         busyText = a === "start" ? "Starting hotspot…" : a === "stop" ? "Stopping hotspot…" : ""
     }
 
-    function runAction(action, viaSudo) {
+    function runAction(action, viaSudo, nopass) {
         useSudo = viaSudo
+        useNopass = nopass === true
         startOutText = ""
         busy = true
         if (action === "start") {
@@ -333,13 +351,29 @@ PluginComponent {
 
     // Single entry point. `fromPanel` = triggered from the control center / popout where a polkit
     // window would close the panel; the bar right-click has no panel open so pkexec is fine there.
+    // For stop/kick a passwordless sudoers rule is tried first, so normally no password is asked.
     function request(action, fromPanel) {
         if (busy) return
-        if (lsAuthMode === "sudo" && fromPanel) {
+        if (lsAuthMode === "sudo" && fromPanel && (action === "stop" || action === "kick") && root.nopass) {
+            needAuth = false
+            runAction(action, false, true)
+        } else if (lsAuthMode === "sudo" && fromPanel) {
             if (needAuth && authAction === action) return
             askPassword(action)
         } else {
             runAction(action, false)
+        }
+    }
+
+    property bool nopass: false
+    Process {
+        id: nopassProc
+        // sudo -l -n exits 0 without prompting iff 'stop'/'kick-root' may run passwordless
+        command: ["sh", "-c",
+            "if sudo -n -l '$1' stop >/dev/null 2>&1 && sudo -n -l '$1' kick-root x >/dev/null 2>&1; " +
+            "then echo 1; else echo 0; fi", "sh", root.linspotBin]
+        stdout: StdioCollector {
+            onStreamFinished: root.nopass = text.trim() === "1"
         }
     }
 
@@ -362,7 +396,7 @@ PluginComponent {
             root.busy = false
             root.busyText = ""
             const errText = startErr.text
-            if (code !== 0 && root.useSudo && root.handleSudoFailure(errText)) {
+            if (code !== 0 && (root.useSudo || root.useNopass) && root.handleSudoFailure(errText)) {
                 root.refresh()
                 return
             }
@@ -387,7 +421,9 @@ PluginComponent {
     Process {
         id: stopProc
         environment: ({ "LS_PW": root.authPw })
-        command: root.useSudo
+        command: root.useNopass
+            ? ["sudo", "-n", root.linspotBin, "stop"]
+            : root.useSudo
             ? ["sh", "-c", "printf '%s\\n' \"$LS_PW\" | sudo -S -p '' sh -c 'echo LINSPOT_AUTH_OK; exec \"$@\"' sh \"$1\" stop", "sh", root.linspotBin]
             : ["pkexec", root.linspotBin, "stop"]
         stdout: SplitParser {
@@ -399,7 +435,7 @@ PluginComponent {
             root.busy = false
             root.busyText = ""
             const errText = stopErr.text
-            if (code !== 0 && root.useSudo && root.handleSudoFailure(errText)) {
+            if (code !== 0 && (root.useSudo || root.useNopass) && root.handleSudoFailure(errText)) {
                 root.refresh()
                 return
             }
@@ -422,9 +458,13 @@ PluginComponent {
     Process {
         id: kickProc
         environment: ({ "LS_PW": root.authPw })
-        command: root.useSudo
-            ? ["sh", "-c", "printf '%s\\n' \"$LS_PW\" | sudo -S -p '' sh -c 'echo LINSPOT_AUTH_OK; exec \"$@\"' sh hostapd_cli -p /run/linspot/hostapd -i hs0 deauthenticate \"$1\"", "sh", root.kickMac]
-            : ["pkexec", "hostapd_cli", "-p", "/run/linspot/hostapd", "-i", "hs0", "deauthenticate", root.kickMac]
+        // through the linspot binary (not hostapd_cli directly) so the DHCP lease is dropped
+        // as well and the device leaves the connected list immediately
+        command: root.useNopass
+            ? ["sudo", "-n", root.linspotBin, "kick-root", root.kickMac]
+            : root.useSudo
+            ? ["sh", "-c", "printf '%s\\n' \"$LS_PW\" | sudo -S -p '' sh -c 'echo LINSPOT_AUTH_OK; exec \"$@\"' sh \"$1\" kick-root \"$2\"", "sh", root.linspotBin, root.kickMac]
+            : ["pkexec", root.linspotBin, "kick-root", root.kickMac]
         stdout: SplitParser {
             onRead: (line) => { if (line === root.authMarker) root.authVerified() }
         }
@@ -432,7 +472,7 @@ PluginComponent {
         onExited: (code) => {
             if (root.consumeAbort()) return
             root.busy = false
-            if (code !== 0 && root.useSudo && root.handleSudoFailure(kickErr.text)) {
+            if (code !== 0 && (root.useSudo || root.useNopass) && root.handleSudoFailure(kickErr.text)) {
                 root.refresh()
                 return
             }
@@ -596,6 +636,7 @@ PluginComponent {
     ccWidgetIsActive: root.running
     onCcWidgetToggled: root.toggleHotspot(true)
     ccDetailContent: managePanel
+    ccDetailHeight: root.panelHeight > 0 ? root.panelHeight : 250
 
     // shared management panel (control-center detail page + bar popout)
     property Component managePanel: Component {
@@ -864,9 +905,8 @@ PluginComponent {
 
                 Rectangle {
                     visible: root.qrVisible
-                    width: Math.min(col.width, 240)
+                    width: Math.min(col.width, 200)
                     height: width
-                    anchors.horizontalCenter: parent.horizontalCenter
                     radius: Theme.cornerRadius
                     color: "white"
                     Image {
@@ -889,7 +929,7 @@ PluginComponent {
 
     // ------------------------------------------------------------ bar popout
     popoutWidth: root.lsPopW
-    popoutHeight: root.lsPopH
+    popoutHeight: root.lsPopH + root.panelExtra
     popoutContent: Component {
         PopoutComponent {
             headerText: "Hotspot"

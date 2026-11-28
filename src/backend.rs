@@ -893,6 +893,7 @@ pub fn start(cfg: &Config) -> Res<()> {
     let _ = fs::set_permissions(STATE_DIR, fs::Permissions::from_mode(0o755));
     let _ = fs::write(SESSION_LOG, "");
     let _ = fs::set_permissions(SESSION_LOG, fs::Permissions::from_mode(0o644));
+    let _ = fs::write(format!("{}/kicked", STATE_DIR), ""); // fresh session: show every device again
     if st0.is_some() {
         info("cleaning up stale hotspot state ...");
         stop(true)?;
@@ -1147,6 +1148,16 @@ pub struct Status {
     pub clients: usize,
     pub concurrent: bool,
     pub started: u64,
+    /// connected devices, already filtered by kicks (empty when the hotspot is off)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub client_list: Vec<ClientInfo>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ClientInfo {
+    pub ip: String,
+    pub mac: String,
+    pub host: String,
 }
 
 #[derive(Clone)]
@@ -1159,12 +1170,31 @@ pub struct Client {
 
 pub fn leases() -> Vec<Client> {
     let now = now_secs();
+    // MACs disconnected with `kick`, with the lease expiry they had when they were kicked:
+    // as long as dnsmasq keeps handing out the *same* lease (device offline), these stay hidden;
+    // a fresh lease for a reconnected device has a new expiry and shows up again.
+    let kicked: Vec<(String, u64)> = fs::read_to_string(format!("{}/kicked", STATE_DIR))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let p: Vec<&str> = l.split_whitespace().collect();
+            if p.len() == 2 {
+                Some((p[0].to_lowercase(), p[1].parse().unwrap_or(0)))
+            } else {
+                None
+            }
+        })
+        .collect();
     let mut v = vec![];
     for l in fs::read_to_string(format!("{}/leases", STATE_DIR)).unwrap_or_default().lines() {
         let p: Vec<&str> = l.split_whitespace().collect();
         if p.len() >= 4 {
             let exp: u64 = p[0].parse().unwrap_or(0);
             if exp == 0 || exp > now {
+                let mac = p[1].to_lowercase();
+                if kicked.iter().any(|(m, e)| *m == mac && (*e == exp || *e == 0)) {
+                    continue;
+                }
                 v.push(Client { ip: p[2].into(), mac: p[1].into(), host: if p[3] == "*" { "-".into() } else { p[3].into() }, expires: exp });
             }
         }
@@ -1174,19 +1204,62 @@ pub fn leases() -> Vec<Client> {
 
 pub fn status() -> Status {
     match load_state() {
-        Some(st) if pid_alive(st.hostapd_pid.unwrap_or(0)) => Status {
-            running: true,
-            ssid: st.ssid,
-            channel: st.channel,
-            clients: leases().len(),
-            concurrent: st.virt,
-            started: st.started,
-        },
+        Some(st) if pid_alive(st.hostapd_pid.unwrap_or(0)) => {
+            let ls = leases();
+            Status {
+                running: true,
+                ssid: st.ssid,
+                channel: st.channel,
+                clients: ls.len(),
+                concurrent: st.virt,
+                started: st.started,
+                client_list: ls
+                    .iter()
+                    .map(|c| ClientInfo { ip: c.ip.clone(), mac: c.mac.clone(), host: c.host.clone() })
+                    .collect(),
+            }
+        }
         _ => Status::default(),
     }
 }
 
 // ------------------------------------------------------------------ client control
+/// Drop the device's DHCP lease so every UI stops listing it right away, and remember the
+/// kick in a world-readable file: if dnsmasq later rewrites the lease file with the same
+/// (unchanged) lease, `leases()` keeps it hidden - until the device truly rejoins and
+/// dnsmasq hands out a fresh lease with a new expiry.
+fn hide_lease(mac: &str) {
+    let path = format!("{}/leases", STATE_DIR);
+    let text = fs::read_to_string(&path).unwrap_or_default();
+    let mut kept: Vec<&str> = vec![];
+    let mut expiries: Vec<u64> = vec![];
+    for l in text.lines() {
+        let p: Vec<&str> = l.split_whitespace().collect();
+        if p.len() >= 4 && p[1].eq_ignore_ascii_case(mac) {
+            expiries.push(p[0].parse().unwrap_or(0));
+        } else {
+            kept.push(l);
+        }
+    }
+    let joined = if kept.is_empty() { String::new() } else { kept.join("\n") + "\n" };
+    if fs::write(&path, joined).is_ok() {
+        debug(&format!("removed {}'s lease from {}", mac, path));
+    }
+    if !expiries.is_empty() {
+        let kp = format!("{}/kicked", STATE_DIR);
+        let mut lines: Vec<String> = fs::read_to_string(&kp).unwrap_or_default().lines().map(|s| s.to_string()).collect();
+        for e in expiries {
+            let entry = format!("{} {}", mac, e);
+            if !lines.contains(&entry) {
+                lines.push(entry);
+            }
+        }
+        if fs::write(&kp, lines.join("\n") + "\n").is_ok() {
+            let _ = fs::set_permissions(&kp, fs::Permissions::from_mode(0o644));
+        }
+    }
+}
+
 /// Disconnect (deauthenticate) one client through the hostapd control interface.
 pub fn kick(mac: &str) -> Res<()> {
     if !is_root() {
@@ -1207,6 +1280,7 @@ pub fn kick(mac: &str) -> Res<()> {
     let ctrl = format!("{}/hostapd", STATE_DIR);
     let o = sh_t(&["hostapd_cli", "-p", &ctrl, "-i", &st.ap, "DEAUTHENTICATE", &mac], 15);
     if o.ok() {
+        hide_lease(&mac);
         ok(&format!("device {} disconnected (it may reconnect if it wants to)", mac));
         Ok(())
     } else {

@@ -41,6 +41,7 @@ has update-desktop-database && update-desktop-database /usr/share/applications >
 has gtk-update-icon-cache && gtk-update-icon-cache -q /usr/share/icons/hicolor >/dev/null 2>&1 || true
 
 rm -f /etc/NetworkManager/conf.d/90-linspot-unmanaged.conf && has nmcli && nmcli general reload conf >/dev/null 2>&1 || true
+rm -f /etc/sudoers.d/50-linspot
 
 # 2b) desktop widgets (KDE Plasma / GNOME / DankMaterialShell) in every user's home
 for h in /root /home/*; do

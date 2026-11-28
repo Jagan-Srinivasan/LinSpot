@@ -80,7 +80,9 @@ class HotspotToggle extends QuickMenuToggle {
         }
         this._busy = true;
         this.subtitle = want ? 'Starting ...' : 'Stopping ...';
-        const r = await run([BIN, want ? 'on' : 'off']);
+        // passwordless first (a sudoers rule covers off where installed), polkit prompt otherwise
+        const act = want ? 'on' : 'off';
+        const r = await run(['sh', '-c', `sudo -n '${BIN}' ${act} 2>/dev/null || '${BIN}' ${act}`]);
         this._busy = false;
         if (this._destroyed)
             return;
@@ -102,7 +104,11 @@ class HotspotToggle extends QuickMenuToggle {
             s = JSON.parse(st.out);
         } catch (_e) { /* binary missing or bad output: treat as off */ }
         let clients = [];
-        if (s.running) {
+        if (Array.isArray(s.client_list)) {
+            // already filtered by the backend (kicked devices are hidden)
+            for (const c of s.client_list)
+                clients.push({ip: c.ip, host: c.host});
+        } else if (s.running) {
             const l = await run(['cat', LEASES]);
             const now = Math.floor(Date.now() / 1000);
             for (const line of l.out.split('\n')) {

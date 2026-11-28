@@ -158,6 +158,20 @@ sed "s|@BINDIR@|$BINDIR|g" "$HERE/data/linspot.desktop" > /usr/share/application
 chmod 644 /usr/share/applications/linspot.desktop
 install -Dm644 "$HERE/data/linspot.svg" /usr/share/icons/hicolor/scalable/apps/linspot.svg
 install -d /etc/linspot
+# passwordless stop/off/kick for the desktop widgets (only low-risk actions)
+if [ -d /etc/sudoers.d ]; then
+  SUD=$(/usr/bin/mktemp 2>/dev/null || echo /tmp/linspot.sudoers)
+  printf '%s\n' \
+    '# LinSpot - passwordless stop/off/kick for the desktop widgets' \
+    "ALL ALL=(root) NOPASSWD: $BINDIR/linspot stop, $BINDIR/linspot off, $BINDIR/linspot kick-root *" \
+    > "$SUD"
+  chmod 440 "$SUD"
+  if has visudo; then
+    if visudo -cf "$SUD" >/dev/null 2>&1; then mv "$SUD" /etc/sudoers.d/50-linspot; else rm -f "$SUD"; warn "sudoers validation failed - widgets will ask for a password"; fi
+  else
+    mv "$SUD" /etc/sudoers.d/50-linspot
+  fi
+fi
 if [ -d /etc/NetworkManager/conf.d ]; then
   # keep NetworkManager from switching the hotspot interface (hs0) to station mode
   printf '[keyfile]\nunmanaged-devices=interface-name:hs0\n' > /etc/NetworkManager/conf.d/90-linspot-unmanaged.conf
@@ -169,6 +183,7 @@ has gtk-update-icon-cache && gtk-update-icon-cache -q /usr/share/icons/hicolor >
 has systemctl && systemctl reload polkit >/dev/null 2>&1 || true
 
 ok "LinSpot installed:  $BINDIR/linspot"
+echo "   Turn off / device disconnect from the widgets is passwordless (sudoers: /etc/sudoers.d/50-linspot)"
 echo "   Launch from your app menu or run:  linspot"
 echo "   Uninstall with:                    sudo ./uninstall.sh"
 

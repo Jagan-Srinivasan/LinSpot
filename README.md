@@ -23,7 +23,8 @@ Standalone: **no `create_ap`, no `linux-wifi-hotspot`** — just one Rust binary
 |---|---|---|
 | 🦀 | **Single Rust binary** | Fast, small, no Python/Electron. GUI, engine and CLI in one `linspot` executable |
 | 📷 | **QR connect code** | Point a phone camera at the QR (in the app's **Share** tab, in the widgets or via `linspot qr`) and it joins the Wi-Fi — no typing the password |
-| 👥 | **Device management** | See every connected device and disconnect one with a click (`linspot kick <MAC>`) |
+| 👥 | **Device management** | See every connected device and disconnect one with a click (`linspot kick <MAC>`); kicked devices leave the list immediately and stay hidden until they actually rejoin |
+| 🔓 | **Passwordless off / kick** | A sudoers rule (`/etc/sudoers.d/50-linspot`, installed with LinSpot) lets the widgets and the app turn the hotspot off and disconnect devices without asking for a password - starting still asks |
 | 🔁 | **Share Wi-Fi while connected to Wi-Fi** | Detects AP + client concurrency and creates a virtual AP `hs0`, so your laptop keeps its Wi-Fi *and* shares it (same channel) |
 | 🔒 | **GUI never runs as root** | Admin work goes through **polkit (`pkexec`)** — you only see a normal password prompt |
 | ♻️ | **Stop restores everything** | Wi-Fi connection, firewall/NAT rules, NetworkManager state are put back |
