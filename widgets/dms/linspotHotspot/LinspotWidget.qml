@@ -370,7 +370,7 @@ PluginComponent {
         id: nopassProc
         // sudo -l -n exits 0 without prompting iff 'stop'/'kick-root' may run passwordless
         command: ["sh", "-c",
-            "if sudo -n -l '$1' stop >/dev/null 2>&1 && sudo -n -l '$1' kick-root x >/dev/null 2>&1; " +
+            "if sudo -n -l \"$1\" stop >/dev/null 2>&1 && sudo -n -l \"$1\" kick-root x >/dev/null 2>&1; " +
             "then echo 1; else echo 0; fi", "sh", root.linspotBin]
         stdout: StdioCollector {
             onStreamFinished: root.nopass = text.trim() === "1"
