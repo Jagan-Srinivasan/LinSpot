@@ -18,7 +18,10 @@ env:
 jobs:
   build:
     name: Build binary + deb / rpm / arch packages
-    runs-on: ubuntu-latest
+    # ubuntu-22.04 keeps the build glibc at 2.35, so the binary also runs on
+    # Debian 12 / Ubuntu 22.04 (newer runners produce binaries needing glibc 2.4x
+    # that Debian stable cannot load).
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
