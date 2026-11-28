@@ -11,6 +11,7 @@
 mod backend;
 mod countries;
 mod gui;
+mod qr;
 mod widgets;
 
 use backend::Config;
@@ -36,6 +37,24 @@ fn run() -> i32 {
         Some("country") => cmd_country(&args[1..]),
         Some("on") => cmd_on(),
         Some("off") => cmd_off(),
+        Some("qr") => cmd_qr(&args[1..]),
+        Some("kick") => match args.get(1) {
+            Some(mac) => elevated(&["kick-root", mac], None),
+            None => {
+                eprintln!("usage: linspot kick <MAC address>");
+                2
+            }
+        },
+        Some("kick-root") => {
+            backend::set_log_file(true);
+            match args.get(1) {
+                Some(mac) => report(backend::kick(mac)),
+                None => {
+                    eprintln!("missing MAC address");
+                    2
+                }
+            }
+        }
         Some("widgets") => widgets::cli(&args[1..]),
         Some("diag") => {
             for l in backend::diagnostics() {
@@ -67,6 +86,10 @@ const HELP: &str = "LinSpot - Wi-Fi hotspot for any Linux distro
   sudo linspot country XX [--persist]   set regulatory country (e.g. IN, US)
   linspot country                       show current regulatory country
   linspot on | off                      start / stop using the settings saved by the GUI
+  linspot qr [--png FILE] [--ssid NAME --password PASS]
+                                        print the Wi-Fi connect string (WIFI:...); with --png
+                                        also save a QR code image for phones to scan
+  linspot kick <MAC>                    disconnect one device from the running hotspot
   linspot widgets ...                   desktop widgets (Plasma, GNOME, DankMaterialShell)
   linspot status                        JSON status
   linspot diag                          print diagnostics
@@ -215,4 +238,63 @@ fn cmd_on() -> i32 {
 
 fn cmd_off() -> i32 {
     elevated(&["stop"], None)
+}
+
+/// `linspot qr`: print the Wi-Fi connect string and optionally save a QR PNG.
+/// Without --ssid/--password the settings saved by the GUI are used (what the widgets share).
+fn cmd_qr(a: &[String]) -> i32 {
+    let mut ssid = None;
+    let mut password = None;
+    let mut png = None;
+    let mut i = 0;
+    while i < a.len() {
+        match a[i].as_str() {
+            "--ssid" => {
+                i += 1;
+                ssid = a.get(i).cloned();
+            }
+            "--password" => {
+                i += 1;
+                password = a.get(i).cloned();
+            }
+            "--png" => {
+                i += 1;
+                png = a.get(i).cloned();
+            }
+            other => {
+                eprintln!("unknown option '{}' (use --png FILE or --ssid NAME --password PASS)", other);
+                return 2;
+            }
+        }
+        i += 1;
+    }
+    let (ssid, password) = match (ssid, password) {
+        (Some(s), Some(p)) => (s, p),
+        (None, None) => match gui::saved_credentials() {
+            Some((s, p)) => (s, p),
+            None => {
+                eprintln!("no saved hotspot settings: give --ssid and --password, or press Start once in the LinSpot app");
+                return 1;
+            }
+        },
+        _ => {
+            eprintln!("--ssid and --password must be given together");
+            return 2;
+        }
+    };
+    let q = match qr::wifi_qr(&ssid, &password) {
+        Ok(q) => q,
+        Err(e) => {
+            eprintln!("could not build the QR code: {}", e);
+            return 1;
+        }
+    };
+    if let Some(p) = png {
+        if let Err(e) = qr::save_png(&q, 8, &p) {
+            eprintln!("could not write {}: {}", p, e);
+            return 1;
+        }
+    }
+    println!("{}", qr::wifi_string(&ssid, &password));
+    0
 }

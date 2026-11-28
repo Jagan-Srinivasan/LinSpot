@@ -22,6 +22,8 @@ Standalone: **no `create_ap`, no `linux-wifi-hotspot`** — just one Rust binary
 | | Advantage | What it means for you |
 |---|---|---|
 | 🦀 | **Single Rust binary** | Fast, small, no Python/Electron. GUI, engine and CLI in one `linspot` executable |
+| 📷 | **QR connect code** | Point a phone camera at the QR (in the app's **Share** tab, in the widgets or via `linspot qr`) and it joins the Wi-Fi — no typing the password |
+| 👥 | **Device management** | See every connected device and disconnect one with a click (`linspot kick <MAC>`) |
 | 🔁 | **Share Wi-Fi while connected to Wi-Fi** | Detects AP + client concurrency and creates a virtual AP `hs0`, so your laptop keeps its Wi-Fi *and* shares it (same channel) |
 | 🔒 | **GUI never runs as root** | Admin work goes through **polkit (`pkexec`)** — you only see a normal password prompt |
 | ♻️ | **Stop restores everything** | Wi-Fi connection, firewall/NAT rules, NetworkManager state are put back |
@@ -73,8 +75,8 @@ Standalone: **no `create_ap`, no `linux-wifi-hotspot`** — just one Rust binary
 
 | Desktop | Widget | What you get | Enable |
 |---|---|---|---|
-| 🟦 **KDE Plasma 6** | Plasma widget (plasmoid) | Panel icon with a **device-count badge**; popup with an **on/off switch** and the list of connected devices | One click: added to your panel automatically |
-| 🟧 **GNOME Shell 45–50** | Shell extension | **Quick Settings "Hotspot" tile** with a device menu, plus a panel indicator while the hotspot is on | One click: extension enabled (loads at next login on Wayland) |
+| 🟦 **KDE Plasma 6** | Plasma widget (plasmoid) | Panel icon with a **device-count badge**; popup with an **on/off switch**, the list of connected devices and a **Show QR** button | One click: added to your panel automatically |
+| 🟧 **GNOME Shell 45–50** | Shell extension | **Quick Settings "Hotspot" tile** with a device menu, a panel indicator while the hotspot is on and a **Show Wi-Fi QR** action | One click: extension enabled (loads at next login on Wayland) |
 | 🟪 **DankMaterialShell** | Plugins | **Bar pill**, **Control Center tile** and **launcher entries** (type `hs`) | Install from the tab, then switch on in DMS Settings → Plugins |
 
 ### How the Widgets tab works
@@ -135,8 +137,9 @@ Run `install.sh` with `sudo` from your normal user so widgets go to *your* home.
 
 | Tab | Purpose |
 |---|---|
-| **Hotspot** | Network name, password, band, channel, interface; Start / Stop |
-| **Clients** | Connected devices |
+| **Hotspot** | Network name, password, band, channel, interface; Start / Stop, uptime, quick actions |
+| **Clients** | Connected devices; disconnect a device |
+| **Share** | QR connect code, save as PNG, copy connection details, open gateway page |
 | **Country code** | Wi-Fi regulatory domain (needed for 5 GHz in many countries) |
 | **Widgets** | Detect desktop, install / enable / remove widgets, instructions |
 | **Logs** | Live session, `session.log`, `hostapd.log`, `dnsmasq.log`, diagnostics |
@@ -149,6 +152,8 @@ sudo linspot start --ssid Net --password 12345678 [--band 5] [--channel 36] [--d
 sudo linspot stop
 sudo linspot country IN --persist
 linspot on | off          # use the settings saved by the GUI (this is what widgets call)
+linspot qr [--png qr.png] # print the Wi-Fi connect string; --png also saves a QR image
+linspot kick <MAC>        # disconnect one device from the running hotspot
 linspot status            # JSON status
 linspot diag              # diagnostics
 ```

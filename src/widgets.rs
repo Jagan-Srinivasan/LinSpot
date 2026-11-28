@@ -33,9 +33,9 @@ impl Target {
     }
     pub fn summary(self) -> &'static str {
         match self {
-            Target::Plasma => "Panel icon with device badge and a popup with an on/off switch and the list of connected devices (Plasma 6).",
-            Target::Gnome => "Quick Settings 'Hotspot' toggle with a menu of connected devices and a panel indicator while the hotspot is on (GNOME 45+).",
-            Target::Dms => "Bar pill, Control Center tile and launcher entries (type 'hs') for DankMaterialShell.",
+            Target::Plasma => "Panel icon with device badge and a popup with an on/off switch, the list of connected devices and a 'Show QR' button (Plasma 6).",
+            Target::Gnome => "Quick Settings 'Hotspot' toggle with a menu of connected devices, a panel indicator while the hotspot is on and a 'Show Wi-Fi QR' action (GNOME 45+).",
+            Target::Dms => "Bar pill, Control Center tile (with QR sharing and device disconnect) and launcher entries (type 'hs') for DankMaterialShell.",
         }
     }
     pub fn parse(s: &str) -> Option<Target> {

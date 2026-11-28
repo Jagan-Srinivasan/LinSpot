@@ -19,11 +19,13 @@ command -v nfpm >/dev/null || { echo 'nfpm is not installed' >&2; exit 1; }
 case "$KIND" in
   deb) nfpm package --config packaging/nfpm-deb.yaml --packager deb --target dist/ ;;
   rpm) nfpm package --config packaging/nfpm-rpm.yaml --packager rpm --target dist/ ;;
+  arch) nfpm package --config packaging/nfpm-arch.yaml --packager archlinux --target dist/ ;;
   all)
     nfpm package --config packaging/nfpm-deb.yaml --packager deb --target dist/
     nfpm package --config packaging/nfpm-rpm.yaml --packager rpm --target dist/
+    nfpm package --config packaging/nfpm-arch.yaml --packager archlinux --target dist/
     ;;
-  *) echo "Usage: $0 deb|rpm|all" >&2; exit 2 ;;
+  *) echo "Usage: $0 deb|rpm|arch|all" >&2; exit 2 ;;
 esac
 
 echo "Packages created in $ROOT/dist"

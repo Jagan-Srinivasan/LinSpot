@@ -21,6 +21,9 @@ PlasmoidItem {
     property var clients: []
     property string lastError: ""
     property int seq: 0
+    property bool qrVisible: false
+    property string qrSource: ""
+    property string qrFile: ""
 
     toolTipMainText: "LinSpot Hotspot"
     toolTipSubText: busy ? "Working ..."
@@ -49,6 +52,12 @@ PlasmoidItem {
     function finished(source, code, out, err) {
         if (source.indexOf("# status") >= 0) {
             parseStatus(out)
+        } else if (source.indexOf("# qr") >= 0) {
+            if (code === 0 && root.qrFile !== "") {
+                root.qrSource = "file://" + root.qrFile
+            } else if (code !== 0) {
+                root.lastError = (err + out).trim().split("\n").slice(-1).join("") || "could not build the QR code"
+            }
         } else if (source.indexOf("# on") >= 0 || source.indexOf("# off") >= 0) {
             busy = false
             if (code === 0) {
@@ -100,6 +109,13 @@ PlasmoidItem {
 
     function openApp() {
         run("gui", "nohup '" + bin + "' gui >/dev/null 2>&1 &")
+    }
+
+    function showQr() {
+        if (!root.running) return
+        // unique file name every time so the image always reloads
+        root.qrFile = "/tmp/linspot-qr-" + Date.now() + ".png"
+        run("qr", "'" + bin + "' qr --png '" + root.qrFile + "'")
     }
 
     Timer {
@@ -224,13 +240,51 @@ PlasmoidItem {
             }
         }
 
-        Item { Layout.fillHeight: true }
+        Kirigami.Separator { Layout.fillWidth: true }
 
-        PlasmaComponents3.Button {
-            text: "Open LinSpot"
-            icon.name: "preferences-system-network"
-            Layout.alignment: Qt.AlignRight
-            onClicked: root.openApp()
+        RowLayout {
+            Layout.fillWidth: true
+            PlasmaComponents3.Button {
+                visible: root.running
+                text: root.qrVisible ? "Hide QR" : "Show QR"
+                icon.name: "view-barcode-qr"
+                enabled: !root.busy
+                onClicked: {
+                    if (root.qrVisible) {
+                        root.qrVisible = false
+                        root.qrSource = ""
+                    } else {
+                        root.qrVisible = true
+                        root.showQr()
+                    }
+                }
+            }
+            Item { Layout.fillWidth: true }
+            PlasmaComponents3.Button {
+                text: "Open LinSpot"
+                icon.name: "preferences-system-network"
+                onClicked: root.openApp()
+            }
         }
+
+        PlasmaComponents3.Item {
+            visible: root.qrVisible && root.qrSource !== ""
+            Layout.fillWidth: true
+            Layout.preferredHeight: Kirigami.Units.gridUnit * 11
+            Image {
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
+                fillMode: Image.PreserveAspectFit
+                source: root.qrSource
+                cache: false
+            }
+        }
+        PlasmaComponents3.Label {
+            visible: root.qrVisible && root.qrSource === ""
+            text: "Building the QR code ..."
+            opacity: 0.7
+        }
+
+        Item { Layout.fillHeight: true }
     }
 }

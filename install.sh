@@ -57,7 +57,7 @@ case "$PM" in
     RUNTIME="iw hostapd dnsmasq iproute2 nftables polkit wireless-regdb util-linux networkmanager mesa libxkbcommon wayland libx11 libxcursor libxrandr libxi"
     BUILDDEPS="rust gcc" ;;
   apt)
-    RUNTIME="iw hostapd dnsmasq-base iproute2 nftables rfkill wireless-regdb network-manager libgl1 libegl1 libxkbcommon0 libwayland-client0 libx11-6 libxcursor1 libxrandr2 libxi6"
+    RUNTIME="iw hostapd dnsmasq-base iproute2 nftables rfkill wireless-regdb network-manager pkexec polkitd libgl1 libegl1 libxkbcommon0 libwayland-client0 libx11-6 libxcursor1 libxrandr2 libxi6"
     BUILDDEPS="cargo gcc pkg-config" ;;
   dnf)
     RUNTIME="iw hostapd dnsmasq iproute nftables polkit wireless-regdb util-linux NetworkManager mesa-libGL mesa-libEGL libxkbcommon libwayland-client libX11 libXcursor libXrandr libXi"
@@ -102,9 +102,13 @@ if [ "$DEPS" -eq 1 ]; then
   [ -n "$PM" ] || die "no supported package manager found; install manually: iw hostapd dnsmasq iproute2 iptables-or-nftables polkit"
   say "Installing runtime dependencies"
   pm_install $RUNTIME
-  # pkexec: package name differs between Debian/Ubuntu releases
+  # polkit on Debian/Ubuntu: since Debian 12 / Ubuntu 22.04 the polkit stack is split into
+  # 'polkitd' (daemon) and 'pkexec' (the tool the GUI uses); 'polkit' does not exist there.
   if [ "$PM" = apt ] && ! has pkexec; then
-    for p in pkexec polkitd policykit-1; do apt-get install -y -qq "$p" >/dev/null 2>&1 && break; done
+    for p in pkexec policykit-1; do apt-get install -y -qq "$p" >/dev/null 2>&1 && break; done
+  fi
+  if [ "$PM" = apt ] && ! has pkexec; then
+    warn "could not install pkexec (try: sudo apt install pkexec polkitd)"
   fi
   # iptables is optional (nft is used otherwise); install if cheap and absent
   if ! has iptables && ! has nft; then

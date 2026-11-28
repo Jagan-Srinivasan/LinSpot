@@ -150,6 +150,14 @@ Item {
         onExited: root.refresh()
     }
     Process { id: guiProc; command: [root.linspotBin, "gui"] }
+    Process {
+        id: qrProc
+        command: ["sh", "-c", "'$1' qr --png /tmp/linspot-qr.png && xdg-open /tmp/linspot-qr.png", "sh", root.linspotBin]
+        stderr: StdioCollector { id: qrErr }
+        onExited: (code) => {
+            if (code !== 0) ToastService.showError("QR code failed", qrErr.text.trim().split("\n").slice(-1).join(" "))
+        }
+    }
 
     function startHotspot() {
         if (running || startProc.running) return
@@ -198,6 +206,13 @@ Item {
                 action: "noop",
                 categories: ["LinSpot"]
             })
+            items.push({
+                name: "Show Wi-Fi QR",
+                comment: "Scan with a phone to join “" + ssid + "”",
+                icon: "material:qr_code_2",
+                action: "qr",
+                categories: ["LinSpot"]
+            })
             for (const c of clientList) {
                 items.push({
                     name: "Disconnect " + c.host,
@@ -225,6 +240,7 @@ Item {
         const a = item.action || ""
         if (a === "toggle") { running ? stopHotspot() : startHotspot() }
         else if (a === "gui") { guiProc.running = true }
+        else if (a === "qr") { qrProc.running = true }
         else if (a.startsWith("kick:")) {
             kickMac = a.substring(5)
             kickProc.running = true

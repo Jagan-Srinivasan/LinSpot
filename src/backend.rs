@@ -1186,6 +1186,34 @@ pub fn status() -> Status {
     }
 }
 
+// ------------------------------------------------------------------ client control
+/// Disconnect (deauthenticate) one client through the hostapd control interface.
+pub fn kick(mac: &str) -> Res<()> {
+    if !is_root() {
+        return Err("must run as root (use sudo or the GUI)".into());
+    }
+    let st = match load_state() {
+        Some(s) if pid_alive(s.hostapd_pid.unwrap_or(0)) => s,
+        _ => return Err("hotspot is not running".into()),
+    };
+    let mac = mac.trim().to_lowercase();
+    if !Regex::new(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$").unwrap().is_match(&mac) {
+        return Err(format!("'{}' is not a valid MAC address (aa:bb:cc:dd:ee:ff)", mac));
+    }
+    if !have("hostapd_cli") {
+        return Err("missing 'hostapd_cli' (shipped with hostapd on most distros)".into());
+    }
+    step(&format!("disconnecting device {} ...", mac));
+    let ctrl = format!("{}/hostapd", STATE_DIR);
+    let o = sh_t(&["hostapd_cli", "-p", &ctrl, "-i", &st.ap, "DEAUTHENTICATE", &mac], 15);
+    if o.ok() {
+        ok(&format!("device {} disconnected (it may reconnect if it wants to)", mac));
+        Ok(())
+    } else {
+        Err(format!("could not disconnect {}: {}", mac, o.stderr.trim()))
+    }
+}
+
 // ------------------------------------------------------------------ country
 fn set_kv_file(path: &str, key: &str, val: &str, quoted: bool) -> std::io::Result<()> {
     let old = fs::read_to_string(path).unwrap_or_default();

@@ -9,7 +9,8 @@ description: One-click Wi-Fi hotspot GUI with desktop widgets
 license: MIT
 homepage: https://github.com/Jagan-Srinivasan/LinSpot
 
-# Fedora/RPM package dependencies
+# Fedora/RHEL package dependencies (install from source on other RPM distros:
+# openSUSE names differ, e.g. Mesa-libGL1/Mesa-libEGL1 - use install.sh there).
 depends:
   - iw
   - hostapd
@@ -17,9 +18,12 @@ depends:
   - iproute
   - nftables
   - polkit
+  - rfkill
   - wireless-regdb
   - NetworkManager
+  - NetworkManager-wifi
   - mesa-libGL
+  - mesa-libEGL
   - libxkbcommon
   - libwayland-client
   - libX11

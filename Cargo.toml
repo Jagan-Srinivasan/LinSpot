@@ -1,6 +1,6 @@
 [package]
 name = "linspot"
-version = "1.0.0"
+version = "0.0.2"
 edition = "2021"
 description = "LinSpot - one-click Wi-Fi hotspot for any Linux distro (egui GUI)"
 license = "MIT"

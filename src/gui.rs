@@ -3,6 +3,7 @@
 //! streaming its tagged output into the log view.
 use crate::backend::{self, Adapter, Client, Status, SysInfo};
 use crate::countries::COUNTRIES;
+use crate::qr;
 use crate::widgets::{self, Detect, Target, TargetInfo};
 use eframe::egui::{self, Color32, Margin, RichText, Rounding, Stroke, TextStyle, Vec2};
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ const TEXT: Color32 = Color32::from_rgb(226, 232, 240);
 enum Tab {
     Hotspot,
     Clients,
+    Share,
     Country,
     Logs,
     Widgets,
@@ -82,6 +84,7 @@ struct LogLine {
 enum Job {
     Start,
     Stop,
+    Kick,
     Country,
     WidgetDeps,
     WidgetInstall,
@@ -122,6 +125,16 @@ pub fn cfg_path() -> PathBuf {
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|| PathBuf::from("/tmp"));
     base.join("linspot").join("config.json")
+}
+
+/// SSID + password the GUI last saved (used by `linspot qr` and the widgets).
+pub fn saved_credentials() -> Option<(String, String)> {
+    let c = load_cfg();
+    if c.ssid.is_empty() || c.password.is_empty() {
+        None
+    } else {
+        Some((c.ssid, c.password))
+    }
 }
 
 fn load_cfg() -> GuiConfig {
@@ -213,6 +226,20 @@ fn lvl_ok(l: Level, f: (bool, bool, bool, bool)) -> bool {
     }
 }
 
+fn uptime_str(started: u64) -> String {
+    if started == 0 {
+        return String::new();
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let s = now.saturating_sub(started);
+    let (h, m) = (s / 3600, (s % 3600) / 60);
+    if h > 0 {
+        format!("{}h {:02}m", h, m)
+    } else {
+        format!("{}m {:02}s", m, s % 60)
+    }
+}
+
 fn random_password() -> String {
     use std::io::Read;
     const CS: &[u8] = b"abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -227,13 +254,13 @@ fn card(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::none()
         .fill(CARD)
         .stroke(Stroke::new(1.0_f32, BORDER))
-        .rounding(Rounding::same(10.0))
+        .rounding(Rounding::same(12.0))
         .inner_margin(Margin::same(16.0))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             if !title.is_empty() {
                 ui.label(RichText::new(title).strong().size(16.0).color(TEXT));
-                ui.add_space(6.0);
+                ui.add_space(8.0);
             }
             add(ui);
         });
@@ -267,8 +294,10 @@ fn setup_style(ctx: &egui::Context) {
     v.widgets.hovered.weak_bg_fill = Color32::from_rgb(48, 57, 74);
     v.widgets.hovered.bg_fill = Color32::from_rgb(48, 57, 74);
     for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.noninteractive] {
-        w.rounding = Rounding::same(8.0);
+        w.rounding = Rounding::same(10.0);
     }
+    v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT);
+    v.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
     ctx.set_visuals(v);
     ctx.style_mut(|s| {
         s.spacing.item_spacing = egui::vec2(10.0, 9.0);
@@ -319,6 +348,8 @@ struct App {
     w_loading: bool,
     w_tip_shown: bool,
     wpending: Option<Target>,
+    qr: Option<Result<qr::Qr, String>>,
+    qr_key: (String, String),
 }
 
 pub fn run() -> i32 {
@@ -384,6 +415,8 @@ impl App {
             w_loading: false,
             w_tip_shown: false,
             wpending: None,
+            qr: None,
+            qr_key: (String::new(), String::new()),
         };
         app.add_line(Level::Info, "LinSpot started".into());
         app.refresh_sys(&cc.egui_ctx);
@@ -592,6 +625,7 @@ impl App {
                     let name = match job {
                         Job::Start => "Start",
                         Job::Stop => "Stop",
+                        Job::Kick => "Disconnect device",
                         Job::Country => "Country change",
                         Job::WidgetDeps => "Package installation",
                         Job::WidgetInstall => "Widget installation",
@@ -664,13 +698,18 @@ impl App {
             .frame(egui::Frame::none().fill(PANEL).inner_margin(Margin::symmetric(18.0, 12.0)).stroke(Stroke::new(1.0_f32, BORDER)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("LinSpot").size(22.0).strong().color(ACCENT));
+                    let (r, _) = ui.allocate_exact_size(Vec2::splat(26.0), egui::Sense::hover());
+                    ui.painter().circle_filled(r.center(), 12.0, ACCENT);
+                    ui.painter().circle_filled(r.center(), 5.5, BG);
+                    ui.label(RichText::new("LinSpot").size(22.0).strong().color(TEXT));
                     ui.label(RichText::new("Wi-Fi hotspot for any Linux").color(DIM));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if self.busy.is_some() {
                             pill(ui, "WORKING", AMBER);
                         } else if self.status.running {
-                            pill(ui, &format!("ON  -  {} device(s)", self.status.clients), GREEN);
+                            let up = uptime_str(self.status.started);
+                            let txt = if up.is_empty() { format!("ON  ·  {} device(s)", self.status.clients) } else { format!("ON  ·  {} device(s)  ·  up {}", self.status.clients, up) };
+                            pill(ui, &txt, GREEN);
                         } else {
                             pill(ui, "OFF", DIM);
                         }
@@ -687,12 +726,13 @@ impl App {
             .show(ctx, |ui| {
                 let errs = self.live.iter().filter(|l| l.level == Level::Error).count();
                 let items = [
-                    (Tab::Hotspot, "Hotspot".to_string()),
-                    (Tab::Clients, format!("Clients ({})", self.clients.len())),
-                    (Tab::Country, "Country code".to_string()),
-                    (Tab::Widgets, "Widgets".to_string()),
-                    (Tab::Logs, if errs > 0 { format!("Logs  [{} err]", errs) } else { "Logs".to_string() }),
-                    (Tab::System, "System".to_string()),
+                    (Tab::Hotspot, format!("📶  Hotspot")),
+                    (Tab::Clients, format!("👥  Clients ({})", self.clients.len())),
+                    (Tab::Share, "🔗  Share / QR".to_string()),
+                    (Tab::Country, "🌍  Country code".to_string()),
+                    (Tab::Widgets, "🧩  Widgets".to_string()),
+                    (Tab::Logs, if errs > 0 { format!("📜  Logs  [{} err]", errs) } else { "📜  Logs".to_string() }),
+                    (Tab::System, "🖥  System".to_string()),
                 ];
                 for (t, label) in items {
                     let sel = self.tab == t;
@@ -733,7 +773,8 @@ impl App {
             tab => {
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match tab {
                     Tab::Hotspot => self.hotspot_tab(ui, ctx),
-                    Tab::Clients => self.clients_tab(ui),
+                    Tab::Clients => self.clients_tab(ui, ctx),
+                    Tab::Share => self.share_tab(ui, ctx),
                     Tab::Country => self.country_tab(ui, ctx),
                     Tab::Widgets => self.widgets_tab(ui, ctx),
                     Tab::System => self.system_tab(ui, ctx),
@@ -784,6 +825,31 @@ impl App {
                     ui.label(RichText::new("Connected devices").color(DIM));
                     ui.label(format!("{}", self.status.clients));
                     ui.end_row();
+                    ui.label(RichText::new("Uptime").color(DIM));
+                    ui.label(RichText::new(uptime_str(self.status.started)).color(GREEN));
+                    ui.end_row();
+                });
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("🔗 Share / QR code").clicked() {
+                        self.tab = Tab::Share;
+                    }
+                    if ui.button("Copy connection details").clicked() {
+                        let details = format!(
+                            "Wi-Fi: {}\nPassword: {}\nGateway: http://{}\nChannel: {} ({} GHz)",
+                            self.status.ssid,
+                            self.cfg.password,
+                            backend::GW,
+                            self.status.channel,
+                            backend::ch_band(self.status.channel)
+                        );
+                        ui.ctx().output_mut(|o| o.copied_text = details);
+                        self.footer = ("Connection details copied".into(), GREEN);
+                    }
+                    if ui.button("Open gateway page").clicked() {
+                        let _ = Command::new("xdg-open").arg(format!("http://{}", backend::GW)).spawn();
+                        self.footer = ("Opening the hotspot admin page".into(), ACCENT);
+                    }
                 });
             });
         }
@@ -871,7 +937,7 @@ impl App {
         let can = !busy && (running || self.validate().is_none());
         let btn = egui::Button::new(RichText::new(label).size(18.0).strong().color(Color32::BLACK))
             .fill(color)
-            .rounding(Rounding::same(10.0))
+            .rounding(Rounding::same(12.0))
             .min_size(Vec2::new(ui.available_width(), 52.0));
         if ui.add_enabled(can, btn).clicked() {
             if running {
@@ -890,31 +956,126 @@ impl App {
         ui.label(RichText::new("The hotspot keeps running if you close this window. Your Wi-Fi is disconnected, the hotspot starts, then the same Wi-Fi is reconnected.").color(DIM).small());
     }
 
-    fn clients_tab(&mut self, ui: &mut egui::Ui) {
+    fn clients_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let busy = self.busy.is_some();
         card(ui, "Connected devices", |ui| {
             if !self.status.running {
                 ui.label(RichText::new("Hotspot is OFF.").color(DIM));
             } else if self.clients.is_empty() {
                 ui.label(RichText::new("No device has received an address yet.").color(DIM));
             } else {
-                egui::Grid::new("cl").striped(true).num_columns(4).spacing([24.0, 8.0]).show(ui, |ui| {
-                    for h in ["IP address", "MAC address", "Hostname", "Lease expires"] {
+                let rows: Vec<(String, String, String, u64)> = self
+                    .clients
+                    .iter()
+                    .map(|c| (c.ip.clone(), c.mac.clone(), c.host.clone(), c.expires))
+                    .collect();
+                egui::Grid::new("cl").striped(true).num_columns(5).spacing([24.0, 8.0]).show(ui, |ui| {
+                    for h in ["IP address", "MAC address", "Hostname", "Lease expires", ""] {
                         ui.label(RichText::new(h).strong().color(ACCENT));
                     }
                     ui.end_row();
                     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-                    for c in &self.clients {
-                        ui.label(RichText::new(&c.ip).monospace());
-                        ui.label(RichText::new(&c.mac).monospace());
-                        ui.label(&c.host);
-                        let left = c.expires.saturating_sub(now);
-                        ui.label(if c.expires == 0 { "infinite".to_string() } else { format!("in {}h {:02}m", left / 3600, (left % 3600) / 60) });
+                    for (ip, mac, host, expires) in rows {
+                        ui.label(RichText::new(&ip).monospace());
+                        ui.label(RichText::new(&mac).monospace());
+                        ui.label(&host);
+                        let left = expires.saturating_sub(now);
+                        ui.label(if expires == 0 { "infinite".to_string() } else { format!("in {}h {:02}m", left / 3600, (left % 3600) / 60) });
+                        if ui.add_enabled(!busy, egui::Button::new(RichText::new("Disconnect").color(RED))).clicked() {
+                            self.run_job(ctx, Job::Kick, vec!["kick".into(), mac.clone()], None);
+                        }
                         ui.end_row();
                     }
                 });
             }
         });
-        ui.label(RichText::new("List is based on DHCP leases; a device that just left may stay listed until its lease ends.").color(DIM).small());
+        ui.label(RichText::new("List is based on DHCP leases; a device that just left may stay listed until its lease ends. 'Disconnect' deauthenticates the device - it can rejoin unless it is blocked at its end.").color(DIM).small());
+    }
+
+    fn share_tab(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
+        let key = (self.cfg.ssid.clone(), self.cfg.password.clone());
+        if self.qr_key != key {
+            self.qr_key = key;
+            self.qr = if self.cfg.ssid.is_empty() || self.cfg.password.is_empty() {
+                None
+            } else {
+                Some(qr::wifi_qr(&self.cfg.ssid, &self.cfg.password))
+            };
+        }
+        card(ui, "Connect by QR code", |ui| {
+            ui.label(RichText::new("Point a phone camera at the code: Android, iOS and Windows offer to join the network automatically (no typing the password). The code uses the network name and password from the Hotspot tab.").color(DIM));
+            ui.add_space(10.0);
+            match self.qr.clone() {
+                None => {
+                    ui.label(RichText::new("Enter a network name and a password on the Hotspot tab first.").color(AMBER));
+                }
+                Some(Err(e)) => {
+                    ui.label(RichText::new(format!("Could not build the QR code: {}", e)).color(RED));
+                }
+                Some(Ok(q)) => {
+                    let side = (ui.available_width() - 24.0).min(300.0).max(140.0);
+                    let (resp, painter) = ui.allocate_painter(Vec2::splat(side), egui::Sense::hover());
+                    let cell = side / (q.size + 8) as f32;
+                    painter.rect(resp.rect, Rounding::same(10.0), Color32::WHITE, Stroke::new(1.0_f32, BORDER));
+                    let quiet = 4.0 * cell;
+                    for y in 0..q.size {
+                        for x in 0..q.size {
+                            if q.is_dark(x, y) {
+                                let p0 = resp.rect.min + egui::vec2(quiet + x as f32 * cell, quiet + y as f32 * cell);
+                                painter.rect(egui::Rect::from_min_size(p0, Vec2::splat(cell + 0.5)), Rounding::same(0.0), Color32::BLACK, Stroke::NONE);
+                            }
+                        }
+                    }
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        let qr = self.qr.clone();
+                        if ui.add_enabled(qr.is_some(), egui::Button::new("Save QR as PNG")).clicked() {
+                            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                            let dir = if std::path::Path::new(&format!("{}/Pictures", home)).is_dir() { format!("{}/Pictures", home) } else { home };
+                            let p = format!("{}/linspot-wifi-qr.png", dir);
+                            match qr {
+                                Some(Ok(q)) => match qr::save_png(&q, 8, &p) {
+                                    Ok(()) => self.footer = (format!("QR code saved to {}", p), GREEN),
+                                    Err(e) => self.footer = (format!("Could not save the QR code: {}", e), RED),
+                                },
+                                _ => {}
+                            }
+                        }
+                        if ui.button("Copy Wi-Fi connect string").clicked() {
+                            ui.ctx().output_mut(|o| o.copied_text = qr::wifi_string(&self.cfg.ssid, &self.cfg.password));
+                            self.footer = ("Connect string copied - paste it into a chat or a QR generator".into(), GREEN);
+                        }
+                    });
+                }
+            }
+        });
+        let running = self.status.running;
+        card(ui, "Other ways to share", |ui| {
+            if running {
+                ui.horizontal(|ui| {
+                    if ui.button("Copy connection details").clicked() {
+                        let details = format!(
+                            "Wi-Fi: {}\nPassword: {}\nGateway: http://{}\nChannel: {} ({} GHz)",
+                            self.status.ssid,
+                            self.cfg.password,
+                            backend::GW,
+                            self.status.channel,
+                            backend::ch_band(self.status.channel)
+                        );
+                        ui.ctx().output_mut(|o| o.copied_text = details);
+                        self.footer = ("Connection details copied".into(), GREEN);
+                    }
+                    if ui.button("Open gateway page").clicked() {
+                        let _ = Command::new("xdg-open").arg(format!("http://{}", backend::GW)).spawn();
+                        self.footer = ("Opening the hotspot admin page".into(), ACCENT);
+                    }
+                });
+            } else {
+                ui.label(RichText::new("Start the hotspot to copy live connection details or open the gateway page.").color(DIM));
+            }
+            ui.add_space(4.0);
+            ui.label(RichText::new(format!("Desktop widgets: the Plasma popup has a 'Show QR' button, and  linspot qr --png /tmp/linspot-qr.png  writes the code from any terminal or script.")).color(DIM).small());
+        });
     }
 
     fn country_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {

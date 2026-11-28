@@ -55,6 +55,10 @@ class HotspotToggle extends QuickMenuToggle {
         this.menu.addAction('Open LinSpot', () => {
             run(['sh', '-c', `nohup '${BIN}' gui >/dev/null 2>&1 &`]);
         });
+        this.menu.addAction('Show Wi-Fi QR (connect by camera)', () => {
+            run(['sh', '-c',
+                `'${BIN}' qr --png /tmp/linspot-qr.png && xdg-open /tmp/linspot-qr.png`]);
+        });
 
         // toggleMode flips `checked` before 'clicked'; read it as the requested state
         this.connect('clicked', () => this._request(this.checked));

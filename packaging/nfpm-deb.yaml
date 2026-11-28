@@ -9,7 +9,10 @@ description: One-click Wi-Fi hotspot GUI with desktop widgets
 license: MIT
 homepage: https://github.com/Jagan-Srinivasan/LinSpot
 
-# Debian package dependencies
+# Debian/Ubuntu package dependencies.
+# NOTE: there is no 'polkit' package on Debian/Ubuntu (that is Arch/Fedora).
+# Since Debian 12 / Ubuntu 22.04 polkit is split into 'polkitd' (daemon) and
+# 'pkexec' (the setuid tool this GUI uses); 'policykit-1' is only transitional.
 depends:
   - iw
   - hostapd
@@ -19,7 +22,8 @@ depends:
   - rfkill
   - wireless-regdb
   - network-manager
-  - polkit
+  - polkitd
+  - pkexec
   - libgl1
   - libegl1
   - libxkbcommon0

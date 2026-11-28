@@ -1,0 +1,130 @@
+# Release workflow: builds the binary, packages it as .deb (Debian/Ubuntu/Mint),
+# .rpm (Fedora/RHEL) and .pkg.tar.zst (Arch/CachyOS/Manjaro), smoke-tests each
+# package inside its native distro container (dependency names must resolve there),
+# then publishes a GitHub release with everything attached.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NFPM_VERSION: 2.42.0
+
+jobs:
+  build:
+    name: Build binary + deb / rpm / arch packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Install nfpm
+        run: |
+          curl -sSfL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" | tar xz
+          sudo mv nfpm /usr/local/bin/nfpm
+          nfpm --version
+
+      - name: Package (deb + rpm + archlinux)
+        run: ./packaging/build-packages.sh all
+
+      - name: Portable binary tarball
+        run: |
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          mkdir -p dist/linspot-$VERSION
+          cp target/release/linspot dist/linspot-$VERSION/
+          cp README.md LICENSE dist/linspot-$VERSION/
+          tar czf "dist/linspot-$VERSION-x86_64-linux.tar.gz" -C dist "linspot-$VERSION"
+          rm -rf dist/linspot-$VERSION
+
+      - name: List packages
+        run: ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/*
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- smoke tests
+  # Each package is installed inside its own distro container: this is where wrong
+  # dependency names bite (e.g. 'polkit' does not exist on Debian/Ubuntu - it is
+  # 'polkitd' + 'pkexec' there). If any name is wrong, the job fails.
+  smoke-deb:
+    name: Smoke test .deb (Debian)
+    runs-on: ubuntu-latest
+    needs: build
+    container: debian:stable
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: Install package (apt resolves our dependency names)
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ./dist/linspot_*_amd64.deb
+          linspot --version
+
+  smoke-rpm:
+    name: Smoke test .rpm (Fedora)
+    runs-on: ubuntu-latest
+    needs: build
+    container: fedora:latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: Install package (dnf resolves our dependency names)
+        run: |
+          dnf install -y ./dist/linspot-*.x86_64.rpm
+          linspot --version
+
+  smoke-arch:
+    name: Smoke test Arch package
+    runs-on: ubuntu-latest
+    needs: build
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: Install package (pacman resolves our dependency names)
+        run: |
+          pacman -Sy --noconfirm
+          pacman -U --noconfirm ./dist/linspot-*.pkg.tar.zst
+          linspot --version
+
+  # ---------------------------------------------------------------- release
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [build, smoke-deb, smoke-rpm, smoke-arch]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          sed "s/\${TAG}/${TAG}/g" packaging/release-notes.md > notes.md
+          gh release create "$TAG" dist/* --title "LinSpot $TAG" --notes-file notes.md

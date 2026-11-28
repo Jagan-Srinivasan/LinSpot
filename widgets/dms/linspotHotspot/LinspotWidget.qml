@@ -96,6 +96,9 @@ PluginComponent {
     property int clientCount: 0
     property var clients: []
     property string lastError: ""
+    property bool qrVisible: false
+    property string qrFile: ""
+    property string qrSource: ""
 
     property string cfgSsid: "LinSpot"
     property string cfgPassword: ""
@@ -482,6 +485,24 @@ PluginComponent {
         if (linspotBin !== "" && !guiProc.running) guiProc.running = true
     }
 
+    // QR sharing: the linspot binary writes the connect-QR PNG (no root needed)
+    function showQr() {
+        if (linspotBin === "" || !root.running) return
+        qrFile = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/linspot-qr-" + Date.now() + ".png"
+        qrSource = ""
+        qrProc.command = [linspotBin, "qr", "--png", qrFile]
+        qrProc.running = true
+    }
+
+    Process {
+        id: qrProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root.qrFile !== "") root.qrSource = "file://" + root.qrFile
+            }
+        }
+    }
+
     Component.onCompleted: {
         loadSettings()
         fpDetectProc.running = true
@@ -828,6 +849,38 @@ PluginComponent {
                         text: "Open LinSpot"
                         iconName: "settings"
                         onClicked: root.openGui()
+                    }
+                    LsButton {
+                        text: root.qrVisible ? "Hide QR" : "Show QR"
+                        iconName: "qr_code_2"
+                        active: root.running && !root.busy
+                        onClicked: {
+                            root.qrVisible = !root.qrVisible
+                            if (root.qrVisible) root.showQr()
+                            else root.qrSource = ""
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.qrVisible
+                    width: Math.min(col.width, 240)
+                    height: width
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    radius: Theme.cornerRadius
+                    color: "white"
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        fillMode: Image.PreserveAspectFit
+                        source: root.qrSource
+                        cache: false
+                    }
+                    StyledText {
+                        anchors.centerIn: parent
+                        visible: root.qrVisible && root.qrSource === ""
+                        text: "Building the QR code ..."
+                        color: "black"
                     }
                 }
             }
